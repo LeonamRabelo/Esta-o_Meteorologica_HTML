@@ -1,7 +1,7 @@
 #include "bmp280.h"
 #include "hardware/i2c.h"
 
-#define ADDR _u(0x76)
+#define ADDR _u(0x77)   //alterado 0x76 para 0x77 por conta da mudança do sensor
 
 void bmp280_init(i2c_inst_t *i2c) {
     uint8_t buf[2];
