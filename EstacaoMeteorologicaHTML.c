@@ -364,31 +364,63 @@ void gpio_irq_handler(uint gpio, uint32_t events){
 }
 
 // Função para checar os alertas, utilizando matriz de leds, led rgb e buzzer
-void checar_alertas(){
-    bool alerta_temp = (temperatura < limite_temp_min || temperatura > limite_temp_max);
-    bool alerta_umi  = (umidade < limite_umi_min || umidade > limite_umi_max);
-    bool alerta_pres = (pressao < limite_pres_min || pressao > limite_pres_max);
+void checar_alertas() {
+    // Zona de tolerância (10% de margem)
+    float margem_temp = (limite_temp_max - limite_temp_min) * 0.1f;
+    float margem_umi  = (limite_umi_max  - limite_umi_min)  * 0.1f;
+    float margem_pres = (limite_pres_max - limite_pres_min) * 0.1f;
 
-    // LED RGB: vermelho se qualquer alerta ativo, verde se tudo OK
-    if(alerta_temp || alerta_umi || alerta_pres){
-        gpio_put(LED_RED, 1);
-        gpio_put(LED_GREEN, 0);
-        pwm_set_gpio_level(BUZZER_PIN, 300);
-        pwm_set_enabled(buzzer_slice, true);
-    }else{
-        gpio_put(LED_RED, 0);
-        gpio_put(LED_GREEN, 1);
-        pwm_set_enabled(buzzer_slice, false);
-    }
+    // Estado de cada sensor (0 = normal, 1 = próximo, 2 = ultrapassou)
+    int estado_temp = 0;
+    int estado_umi  = 0;
+    int estado_pres = 0;
 
-    // Matriz WS2812: indicar nível de alerta pela intensidade
-    int nivel_alerta = 0;
-    if(alerta_temp || alerta_umi || alerta_pres){
-        if(alerta_temp && alerta_umi && alerta_pres) nivel_alerta = 4;
-        else if((alerta_temp && alerta_umi) || (alerta_temp && alerta_pres) || (alerta_umi && alerta_pres)) nivel_alerta = 3;
-        else nivel_alerta = 2;
+    if (temperatura < limite_temp_min || temperatura > limite_temp_max)
+        estado_temp = 2;
+    else if (temperatura < limite_temp_min + margem_temp || temperatura > limite_temp_max - margem_temp)
+        estado_temp = 1;
+
+    if (umidade < limite_umi_min || umidade > limite_umi_max)
+        estado_umi = 2;
+    else if (umidade < limite_umi_min + margem_umi || umidade > limite_umi_max - margem_umi)
+        estado_umi = 1;
+
+    if (pressao < limite_pres_min || pressao > limite_pres_max)
+        estado_pres = 2;
+    else if (pressao < limite_pres_min + margem_pres || pressao > limite_pres_max - margem_pres)
+        estado_pres = 1;
+
+    // Determinar o maior nível de alerta entre todos os sensores
+    int nivel_alerta = estado_temp;
+    if (estado_umi  > nivel_alerta) nivel_alerta = estado_umi;
+    if (estado_pres > nivel_alerta) nivel_alerta = estado_pres;
+
+    // LED RGB e buzzer
+    switch (nivel_alerta) {
+        case 0: // OK
+            gpio_put(LED_GREEN, 1);
+            gpio_put(LED_RED, 0);
+            gpio_put(LED_BLUE, 0);
+            pwm_set_enabled(buzzer_slice, false);
+            set_one_led(0, 16, 0, 0); // Verde, ícone "OK"
+            break;
+        case 1: // Aproximando
+            gpio_put(LED_GREEN, 0);
+            gpio_put(LED_RED, 1);
+            gpio_put(LED_BLUE, 1);  // Amarelo (vermelho+verde)
+            pwm_set_gpio_level(BUZZER_PIN, 300);  // Beep leve
+            pwm_set_enabled(buzzer_slice, true);
+            set_one_led(16, 16, 0, 1); // Amarelo, ícone atenção
+            break;
+        case 2: // Estourou
+            gpio_put(LED_GREEN, 0);
+            gpio_put(LED_RED, 1);
+            gpio_put(LED_BLUE, 0);
+            pwm_set_gpio_level(BUZZER_PIN, 600);  // Beep forte
+            pwm_set_enabled(buzzer_slice, true);
+            set_one_led(32, 0, 0, 2); // Vermelho, ícone X
+            break;
     }
-    set_one_led(5, 0, 0, nivel_alerta);  // LED vermelho no nível calculado
 }
 
 int main(){
@@ -437,8 +469,7 @@ int main(){
 
         //Para enviar para o html, utilizei a media da soma dos dos dois sensores e jogar no grafico
         temperatura = (((temperatura_bmp / 100.0f) + data.temperature) / 2.0f) + offSet_temp;
-        //offSet_temp = 0;
-        //checar_alertas();
+        checar_alertas();
 
         sprintf(str_tmp1, "%.1fC", temperatura_bmp / 100.0);  // Converte o inteiro em string
         sprintf(str_tmp2, "%.1fC", data.temperature);  // Converte o inteiro em string
