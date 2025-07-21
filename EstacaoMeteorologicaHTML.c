@@ -42,6 +42,8 @@ float temperatura = 0, umidade = 0, pressao = 0;
 float limite_temp_min = 10.0, limite_temp_max = 40.0;
 float limite_umi_min = 30.0, limite_umi_max = 80.0;
 float limite_pres_min = 900.0, limite_pres_max = 1020.0;
+float offSet_temp = 0.0f;
+
 uint buzzer_slice;
 ssd1306_t ssd;
 AHT20_Data dados_aht;
@@ -78,7 +80,6 @@ const char HTML_TEMPLATE[] =
 "<label>Pres Min: <input type='number' id='presMin' value='%.1f'></label>"
 "<label>Pres Max: <input type='number' id='presMax' value='%.1f'></label><br>"
 "<label>OffSet Temp: <input type='number' id='offSetTemp' value='%.1f'></label>"
-"<label>OffSet Umi: <input type='number' id='offSetUmi' value='%.1f'></label><br>"
 "<button onclick='enviarLimites()'>Salvar Limites</button>"
 "</div>"
 "<div class='graph'>"
@@ -93,7 +94,7 @@ const char HTML_TEMPLATE[] =
 "<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>"
 "<script>"
 "function enviarLimites(){"
-"const body=\"tempMin=\"+tempMin.value+\"&tempMax=\"+tempMax.value;"
+"const body=\"tempMin=\"+tempMin.value+\"&tempMax=\"+tempMax.value+\"&umiMin=\"+umiMin.value+\"&umiMax=\"+umiMax.value+\"&presMin=\"+presMin.value+\"&presMax=\"+presMax.value+\"&offSetTemp=\"+offSetTemp.value;"
 "fetch('/set-limits',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});}"
 "function atualizar(){fetch('/data').then(res=>res.json()).then(data=>{"
 "document.getElementById('temp').textContent=data.temp.toFixed(2);"
@@ -248,7 +249,8 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         snprintf(html_final, sizeof(html_final), HTML_TEMPLATE,
             limite_temp_min, limite_temp_max,
             limite_umi_min, limite_umi_max,
-            limite_pres_min, limite_pres_max);
+            limite_pres_min, limite_pres_max,
+            offSet_temp);
 
         tcp_write(tpcb, header_html, strlen(header_html), TCP_WRITE_FLAG_COPY);
         tcp_write(tpcb, html_final, strlen(html_final), TCP_WRITE_FLAG_COPY);
@@ -264,69 +266,73 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         tcp_write(tpcb, json, strlen(json), TCP_WRITE_FLAG_COPY);
     }
 
-   else if (strstr(req_buffer, "POST /set-limits") != NULL) {
+else if (strstr(req_buffer, "POST /set-limits") != NULL) {
     char *body = strstr(req_buffer, "\r\n\r\n");
     if (body) {
-        // === Etapa 1: Content-Length ===
         int content_length = 0;
         char *cl_ptr = strstr(req_buffer, "Content-Length:");
-        if (cl_ptr) {
-            sscanf(cl_ptr, "Content-Length: %d", &content_length);
-        }
+        if (cl_ptr) sscanf(cl_ptr, "Content-Length: %d", &content_length);
 
-        // Calcula se o corpo completo já chegou
-        int header_len = (body + 4) - req_buffer; // body + 4 é onde o corpo começa
+        int header_len = (body + 4) - req_buffer;
         int total_expected_len = header_len + content_length;
 
         if (req_offset < total_expected_len) {
-            // Ainda não chegou tudo, espera mais dados
             tcp_recved(tpcb, p->tot_len);
             pbuf_free(p);
             return ERR_OK;
         }
 
-        // === Etapa 2: Começa leitura do corpo ===
-        body += 4; // pula os "\r\n\r\n"
+        body += 4;
 
-        // Mostra conteúdo bruto do corpo
-        printf(">>> BODY BRUTO:\n%s\n", body);
-
-        // Substitui vírgulas por ponto (caso navegador envie vírgula como separador decimal)
+        // Sanitiza vírgulas
         for (char *ptr = body; *ptr; ptr++) {
             if (*ptr == ',') *ptr = '.';
         }
 
-        // Inicializa variáveis temporárias
-        float temp_min = limite_temp_min;
-        float temp_max = limite_temp_max;
+        // Variáveis temporárias
+        float tMin = limite_temp_min;
+        float tMax = limite_temp_max;
+        float uMin = limite_umi_min;
+        float uMax = limite_umi_max;
+        float pMin = limite_pres_min;
+        float pMax = limite_pres_max;
+        float offsetT = offSet_temp;
 
-        // === Etapa 3: Parse dos valores ===
+        // Parse do corpo
         char *token = strtok(body, "&");
         while (token != NULL) {
-            if (sscanf(token, "tempMin=%f", &temp_min) == 1) {
-                printf(">> tempMin detectado: %.2f\n", temp_min);
-            } else if (sscanf(token, "tempMax=%f", &temp_max) == 1) {
-                printf(">> tempMax detectado: %.2f\n", temp_max);
-            }
+            sscanf(token, "tempMin=%f", &tMin);
+            sscanf(token, "tempMax=%f", &tMax);
+            sscanf(token, "umiMin=%f", &uMin);
+            sscanf(token, "umiMax=%f", &uMax);
+            sscanf(token, "presMin=%f", &pMin);
+            sscanf(token, "presMax=%f", &pMax);
+            sscanf(token, "offSetTemp=%f", &offsetT);
             token = strtok(NULL, "&");
         }
 
-        // Atualiza os valores globais
-        limite_temp_min = temp_min;
-        limite_temp_max = temp_max;
+        // Atualiza variáveis globais
+        limite_temp_min = tMin;
+        limite_temp_max = tMax;
+        limite_umi_min = uMin;
+        limite_umi_max = uMax;
+        limite_pres_min = pMin;
+        limite_pres_max = pMax;
+        offSet_temp = offsetT;
 
-        printf("MIN: %.1f MAX: %.1f\n", limite_temp_min, limite_temp_max);
-        printf("Novos limites salvos\n");
+        printf(">>> NOVOS LIMITES:\n");
+        printf("Temp: %.1f - %.1f\n", tMin, tMax);
+        printf("Umi:  %.1f - %.1f\n", uMin, uMax);
+        printf("Pres: %.1f - %.1f\n", pMin, pMax);
+        printf("OffT: %.2f\n", offsetT);
 
         const char *ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nLimites atualizados.";
         tcp_write(tpcb, ok, strlen(ok), TCP_WRITE_FLAG_COPY);
-    }
-
-    else {
+    } else {
         const char *not_found = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nRecurso não encontrado.";
         tcp_write(tpcb, not_found, strlen(not_found), TCP_WRITE_FLAG_COPY);
     }
-   }
+}
     tcp_recved(tpcb, p->tot_len);
     pbuf_free(p);
     tcp_close(tpcb);
@@ -430,7 +436,8 @@ int main(){
         }
 
         //Para enviar para o html, utilizei a media da soma dos dos dois sensores e jogar no grafico
-        temperatura = ((temperatura_bmp / 100.0f) + data.temperature) / 2.0f;
+        temperatura = (((temperatura_bmp / 100.0f) + data.temperature) / 2.0f) + offSet_temp;
+        //offSet_temp = 0;
         //checar_alertas();
 
         sprintf(str_tmp1, "%.1fC", temperatura_bmp / 100.0);  // Converte o inteiro em string
