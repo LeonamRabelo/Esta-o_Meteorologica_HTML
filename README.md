@@ -60,16 +60,6 @@ temperatura = (((temperatura_bmp / 100.0f) + data.temperature) / 2.0f) + offSet_
 3. Acesse o IP local do Pico pelo navegador
 4. Ajuste os limites e observe os alertas visuais/sonoros conforme o ambiente
 
-## 📁 Organização do código
-
-```
-/main.c               # Loop principal, leitura de sensores, lógica de controle
-/webserver.c          # HTML e tratamento de POST/GET
-/ws2812.pio           # Programa PIO para controlar LEDs WS2812
-/matriz_leds.c        # Ícones gráficos e controle da matriz
-/mqtt.c               # Publicação MQTT dos dados
-```
-
 ## 👨‍💻 Autor
 
 Projeto desenvolvido por Leonam Rabelo.
