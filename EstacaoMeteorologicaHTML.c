@@ -228,7 +228,6 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         req_offset = 0;
         return ERR_OK;
     }
-
     //Acumula a requisição
     if(req_offset + p->len < MAX_REQ_LEN){     // Se o buffer nao estiver cheio
         memcpy(req_buffer + req_offset, p->payload, p->len);    // Copia o payload
@@ -259,43 +258,45 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
 
     if (strncmp(req_buffer, "GET / ", 6) == 0){ // Se a requisição for para o index
         char html_final[4096];  // Buffer para armazenar o HTML
+        //Cria o HTML com os dados atuais e os limites de temperatura, umidade e pressão, alem dos offsets
         snprintf(html_final, sizeof(html_final), HTML_TEMPLATE,
             limite_temp_min, limite_temp_max,
             limite_umi_min, limite_umi_max,
             limite_pres_min, limite_pres_max,
             offSet_temp, offSet_umid, offSet_pres);
-
+        //Envia o HTML
         tcp_write(tpcb, header_html, strlen(header_html), TCP_WRITE_FLAG_COPY);
         tcp_write(tpcb, html_final, strlen(html_final), TCP_WRITE_FLAG_COPY);
     }
     //Verifica se a requisição e para /data
     else if (strncmp(req_buffer, "GET /data", 9) == 0){
         char json[128];
+        //Cria o JSON com os dados atuais de temperatura, umidade e pressão
         snprintf(json, sizeof(json),
             "{\"temp\":%.2f,\"umi\":%.2f,\"pres\":%.2f}",
             temperatura, umidade, pressao);
-
+        //Envia
         tcp_write(tpcb, header_json, strlen(header_json), TCP_WRITE_FLAG_COPY);
         tcp_write(tpcb, json, strlen(json), TCP_WRITE_FLAG_COPY);
     }
     //Verifica se a requisição e para /set-limits
     else if(strstr(req_buffer, "POST /set-limits") != NULL){
     char *body = strstr(req_buffer, "\r\n\r\n");
-    if(body){
-        int content_length = 0;
-        char *cl_ptr = strstr(req_buffer, "Content-Length:");
-        if(cl_ptr) sscanf(cl_ptr, "Content-Length: %d", &content_length);
+    if(body){   //Se encontrou o corpo
+        int content_length = 0; //Tamanho do corpo
+        char *cl_ptr = strstr(req_buffer, "Content-Length:");   //Procura pelo cabeçalho Content-Length
+        if(cl_ptr) sscanf(cl_ptr, "Content-Length: %d", &content_length);   //Se encontrou, extrai o valor
 
-        int header_len = (body + 4) - req_buffer;
-        int total_expected_len = header_len + content_length;
-
-        if(req_offset < total_expected_len){
-            tcp_recved(tpcb, p->tot_len);
-            pbuf_free(p);
+        int header_len = (body + 4) - req_buffer;   //Tamanho do cabeçalho
+        int total_expected_len = header_len + content_length;   //Tamanho total da requisição
+        
+        if(req_offset < total_expected_len){    //Se ainda nao chegou o corpo completo
+            tcp_recved(tpcb, p->tot_len);       //Aumenta o total de bytes recebidos
+            pbuf_free(p);                       //Libera o buffer
             return ERR_OK;
         }
 
-        body += 4;
+        body += 4;  //Aponta pro início do corpo
 
         //Sanitiza vírgulas, para evitar problemas com o JSON de envio, com uso de float
         for(char *ptr = body; *ptr; ptr++){
@@ -355,10 +356,10 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         tcp_write(tpcb, not_found, strlen(not_found), TCP_WRITE_FLAG_COPY);
     }
     }
-    tcp_recved(tpcb, p->tot_len);
+    tcp_recved(tpcb, p->tot_len);   //Aumenta o total de bytes recebidos com a requisição completa
     pbuf_free(p);
     tcp_close(tpcb);
-    req_offset = 0; // limpa o buffer
+    req_offset = 0; //limpa o buffer
     return ERR_OK;
 }
 
@@ -375,33 +376,37 @@ void tocar_beeps(int qtd_beeps, int duracao_ms, int pausa_ms){
 
 //Função para checar os alertas, utilizando matriz de leds, led rgb e buzzer
 void checar_alertas(){
+    //Calcula a margem de erro para os limites de temperatura, umidade e pressão em 10%
     float margem_temp = (limite_temp_max - limite_temp_min) * 0.1f;
     float margem_umi  = (limite_umi_max  - limite_umi_min)  * 0.1f;
     float margem_pres = (limite_pres_max - limite_pres_min) * 0.1f;
-
+    
+    //Calcula o estado dos alertas de acordo com os limites de temperatura, umidade e pressão
     int estado_temp = 0, estado_umi = 0, estado_pres = 0;
 
+    //Checa os limites de temperatura
     if(temperatura < limite_temp_min || temperatura > limite_temp_max)
         estado_temp = 2;
     else if(temperatura < limite_temp_min + margem_temp || temperatura > limite_temp_max - margem_temp)
         estado_temp = 1;
-
+    //Checa os limites de umidade
     if(umidade < limite_umi_min || umidade > limite_umi_max)
         estado_umi = 2;
     else if(umidade < limite_umi_min + margem_umi || umidade > limite_umi_max - margem_umi)
         estado_umi = 1;
-
+    //Checa os limites de pressão
     if(pressao < limite_pres_min || pressao > limite_pres_max)
         estado_pres = 2;
     else if(pressao < limite_pres_min + margem_pres || pressao > limite_pres_max - margem_pres)
         estado_pres = 1;
 
+    //Calcula o nivel de alerta maior entre os 3 sensores
     int nivel_alerta = estado_temp;
     if(estado_umi > nivel_alerta) nivel_alerta = estado_umi;
     if(estado_pres > nivel_alerta) nivel_alerta = estado_pres;
 
     switch(nivel_alerta){
-        case 0: // OK
+        case 0: //Verde - OK, sem alerta
             gpio_put(LED_GREEN, 1);
             gpio_put(LED_RED, 0);
             gpio_put(LED_BLUE, 0);
@@ -413,7 +418,7 @@ void checar_alertas(){
             gpio_put(LED_GREEN, 1);
             gpio_put(LED_RED, 1);
             gpio_put(LED_BLUE, 0);
-            tocar_beeps(2, 200, 300);  // 2 beeps curtos
+            tocar_beeps(2, 200, 300);  //2 beeps curtos
             set_one_led(16, 16, 0, 1);
             break;
 
@@ -421,7 +426,7 @@ void checar_alertas(){
             gpio_put(LED_GREEN, 0);
             gpio_put(LED_RED, 1);
             gpio_put(LED_BLUE, 0);
-            tocar_beeps(4, 150, 200);  // 4 beeps rápidos
+            tocar_beeps(4, 150, 200);  //4 beeps rápidos
             set_one_led(32, 0, 0, 2);
             break;
     }
