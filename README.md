@@ -60,6 +60,9 @@ temperatura = (((temperatura_bmp / 100.0f) + data.temperature) / 2.0f) + offSet_
 3. Acesse o IP local do Pico pelo navegador
 4. Ajuste os limites e observe os alertas visuais/sonoros conforme o ambiente
 
+## Página WEB
+![WEB](image.png)
+
 ## 👨‍💻 Autor
 
 Projeto desenvolvido por Leonam Rabelo.

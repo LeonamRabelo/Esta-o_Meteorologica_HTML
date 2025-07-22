@@ -43,6 +43,7 @@ float limite_umi_min = 30.0, limite_umi_max = 80.0;         //Variáveis para ar
 float limite_pres_min = 900.0, limite_pres_max = 1020.0;    //Variáveis para armazenar os limites de pressão
 float offSet_temp = 0.0f;                                   //Variável para armazenar o offset da temperatura
 float offSet_umid = 0.0f;                                   //Variável para armazenar o offset da umidade
+float offSet_pres = 0.0f;                                   //Variável para armazenar o offset da pressão
 
 uint buzzer_slice;  //Variável para armazenar o slice do buzzer
 ssd1306_t ssd;  //Estrutura para armazenar os dados do display
@@ -70,16 +71,15 @@ const char HTML_TEMPLATE[] =
 "canvas{width:100%;height:250px;border:1px solid #ccc;border-radius:10px}"
 "</style></head><body>"
 
-"<header>Estação Meteorológica IoT</header>"
+"<header>Estação Meteorológica</header>"
 
 "<div class='sensor'>"
 "<h2>Temperatura: <span id='temp'>--</span>°C</h2>"
-"<h2>Umidade: <span id='umi'>--</span>%</h2>"
-"<h2>Pressão: <span id='pres'>--</span> hPa</h2>"
+"<h2>Umidade: <span id='umi'>--</span>%%</h2>"
+"<h2>Pressão: <span id='pres'>--</span>hPa</h2>"
 "</div>"
 
 "<div class='limits'>"
-"<br><h3>Definir Configurações</h3>"
 "<label>Temp Min: <input type='number' id='tempMin' value='%.1f'></label>"
 "<label>Temp Max: <input type='number' id='tempMax' value='%.1f'></label><br>"
 "<label>Umi Min: <input type='number' id='umiMin' value='%.1f'></label>"
@@ -87,7 +87,8 @@ const char HTML_TEMPLATE[] =
 "<label>Pres Min: <input type='number' id='presMin' value='%.1f'></label>"
 "<label>Pres Max: <input type='number' id='presMax' value='%.1f'></label><br>"
 "<label>Offset Temp: <input type='number' id='offSetTemp' value='%.1f'></label>"
-"<label>Offset Umi: <input type='number' id='offSetUmi' value='%.1f'></label><br>"
+"<label>Offset Umi: <input type='number' id='offSetUmi' value='%.1f'></label>"
+"<label>Offset Pres: <input type='number' id='offSetPres' value='%.1f'></label><br>"
 "<button onclick='enviarLimites()'>Salvar</button>"
 "</div>"
 
@@ -100,8 +101,10 @@ const char HTML_TEMPLATE[] =
 "<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>"
 "<script>"
 "function enviarLimites(){"
-"const body=\"tempMin=\"+tempMin.value+\"&tempMax=\"+tempMax.value+\"&umiMin=\"+umiMin.value+\"&umiMax=\"+umiMax.value"
-"+\"&presMin=\"+presMin.value+\"&presMax=\"+presMax.value+\"&offSetTemp=\"+offSetTemp.value+\"&offSetUmi=\"+offSetUmi.value;"
+"const body=`tempMin=${tempMin.value}&tempMax=${tempMax.value}`+"
+"`&umiMin=${umiMin.value}&umiMax=${umiMax.value}`+"
+"`&presMin=${presMin.value}&presMax=${presMax.value}`+"
+"`&offSetTemp=${offSetTemp.value}&offSetUmi=${offSetUmi.value}&offSetPres=${offSetPres.value}`;"
 "fetch('/set-limits',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});}"
 
 "function atualizar(){fetch('/data').then(res=>res.json()).then(data=>{"
@@ -109,21 +112,21 @@ const char HTML_TEMPLATE[] =
 "document.getElementById('umi').textContent=data.umi.toFixed(2);"
 "document.getElementById('pres').textContent=data.pres.toFixed(2);"
 
-"chartTemp.data.labels.push('');chartTemp.data.datasets[0].data.push(data.temp);"
-"chartUmi.data.labels.push('');chartUmi.data.datasets[0].data.push(data.umi);"
-"chartPres.data.labels.push('');chartPres.data.datasets[0].data.push(data.pres);"
+"chartTemp.data.labels.push(''); chartTemp.data.datasets[0].data.push(data.temp);"
+"chartUmi.data.labels.push(''); chartUmi.data.datasets[0].data.push(data.umi);"
+"chartPres.data.labels.push(''); chartPres.data.datasets[0].data.push(data.pres);"
 
 "if(chartTemp.data.labels.length>20){"
-"chartTemp.data.labels.shift();chartTemp.data.datasets[0].data.shift();"
-"chartUmi.data.labels.shift();chartUmi.data.datasets[0].data.shift();"
-"chartPres.data.labels.shift();chartPres.data.datasets[0].data.shift();}"
+"chartTemp.data.labels.shift(); chartTemp.data.datasets[0].data.shift();"
+"chartUmi.data.labels.shift(); chartUmi.data.datasets[0].data.shift();"
+"chartPres.data.labels.shift(); chartPres.data.datasets[0].data.shift();}"
 
-"chartTemp.update();chartUmi.update();chartPres.update();}).catch(console.error);}"
+"chartTemp.update(); chartUmi.update(); chartPres.update();}).catch(console.error);}"
 
 "const chartTemp=new Chart(document.getElementById('chartTemp'),{type:'line',data:{labels:[],datasets:[{label:'Temperatura (°C)',data:[],borderColor:'red'}]},options:{responsive:true,animation:false}});"
 "const chartUmi=new Chart(document.getElementById('chartUmi'),{type:'line',data:{labels:[],datasets:[{label:'Umidade (%)',data:[],borderColor:'blue'}]},options:{responsive:true,animation:false}});"
 "const chartPres=new Chart(document.getElementById('chartPres'),{type:'line',data:{labels:[],datasets:[{label:'Pressão (hPa)',data:[],borderColor:'green'}]},options:{responsive:true,animation:false}});"
-"setInterval(atualizar,2000);atualizar();"
+"setInterval(atualizar,2000); atualizar();"
 "</script>"
 
 "</body></html>";
@@ -260,7 +263,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
             limite_temp_min, limite_temp_max,
             limite_umi_min, limite_umi_max,
             limite_pres_min, limite_pres_max,
-            offSet_temp, offSet_umid);
+            offSet_temp, offSet_umid, offSet_pres);
 
         tcp_write(tpcb, header_html, strlen(header_html), TCP_WRITE_FLAG_COPY);
         tcp_write(tpcb, html_final, strlen(html_final), TCP_WRITE_FLAG_COPY);
@@ -308,6 +311,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         float pMax = limite_pres_max;
         float offsetT = offSet_temp;
         float offsetU = offSet_umid;
+        float offsetP = offSet_pres;
 
         //Parse do corpo, para extrair os limites e offset, e atualizar as variáveis globais
         char *token = strtok(body, "&");
@@ -320,6 +324,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
             sscanf(token, "presMax=%f", &pMax);
             sscanf(token, "offSetTemp=%f", &offsetT);
             sscanf(token, "offSetUmi=%f", &offsetU);
+            sscanf(token, "offSetPres=%f", &offsetP);
             token = strtok(NULL, "&");
         }
 
@@ -332,6 +337,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         limite_pres_max = pMax;
         offSet_temp = offsetT;
         offSet_umid = offsetU;
+        offSet_pres = offsetP;
 
         //Exibe os novos limites na serial
         printf(">>> NOVOS LIMITES:\n");
@@ -340,6 +346,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         printf("Pres: %.1f - %.1f\n", pMin, pMax);
         printf("OffT: %.2f\n", offsetT);
         printf("OffU: %.2f\n", offsetU);
+        printf("OffP: %.2f\n", offsetP);
 
         const char *ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nLimites atualizados.";
         tcp_write(tpcb, ok, strlen(ok), TCP_WRITE_FLAG_COPY);
@@ -443,7 +450,7 @@ int main(){
         //Leitura do BMP280
         bmp280_read_raw(I2C_PORT_SENSOR, &raw_temp_bmp, &raw_pressure);
         float temperatura_bmp = bmp280_convert_temp(raw_temp_bmp, &bmp_params);
-        pressao = bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &bmp_params) / 100.0f;
+        pressao = (bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &bmp_params) / 100.0f) + offSet_pres;
         //Leitura do AHT20
         if(aht20_read(I2C_PORT_SENSOR, &data)){
             printf("Temperatura AHT: %.2f C\n", data.temperature);
