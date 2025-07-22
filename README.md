@@ -1,5 +1,5 @@
 
-# Estação Meteorológica IoT com Interface Web e Alertas Inteligentes
+# Estação Meteorológica IoT com Interface Web
 
 Este projeto implementa uma estação meteorológica embarcada com visualização em tempo real via painel web, configuração remota de limites e alertas audiovisuais. A lógica é construída em C para microcontrolador Raspberry Pi Pico W, com sensores ambientais, comunicação Wi-Fi e interface visual interativa.
 
@@ -10,8 +10,6 @@ Este projeto implementa uma estação meteorológica embarcada com visualizaçã
 - 🧠 Cálculo de temperatura com **offset ajustável**
 - 🔔 Alertas com **LED RGB**, **buzzer** e **ícones gráficos** (OK, atenção, alerta)
 - 📊 Visualização por **matriz WS2812** (5x5)
-- ⚙️ Modo economia de energia e detecção de presença (opcional)
-- ☁️ Integração com **MQTT** para envio remoto de dados
 
 ## 🚀 Tecnologias utilizadas
 
