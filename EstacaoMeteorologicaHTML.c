@@ -68,19 +68,19 @@ const char HTML_TEMPLATE[] =
 "<header>Estação Meteorológica IoT</header>"
 "<div class='sensor'>"
 "<h2>Temperatura: <span id='temp'>--</span> °C</h2>"
-"<h2>Umidade: <span id='umi'>--</span> %</h2>"
+"<h2>Umidade: <span id='umi'>--</span>%%</h2>"
 "<h2>Pressão: <span id='pres'>--</span> hPa</h2>"
 "</div>"
 "<div class='limits'>"
-"<h3>Definir Limites</h3>"
+"<h3>Definir configurações</h3>"
 "<label>Temp Min: <input type='number' id='tempMin' value='%.1f'></label>"
 "<label>Temp Max: <input type='number' id='tempMax' value='%.1f'></label><br>"
 "<label>Umi Min: <input type='number' id='umiMin' value='%.1f'></label>"
 "<label>Umi Max: <input type='number' id='umiMax' value='%.1f'></label><br>"
 "<label>Pres Min: <input type='number' id='presMin' value='%.1f'></label>"
 "<label>Pres Max: <input type='number' id='presMax' value='%.1f'></label><br>"
-"<label>OffSet Temp: <input type='number' id='offSetTemp' value='%.1f'></label>"
-"<button onclick='enviarLimites()'>Salvar Limites</button>"
+"<label>OffSet Temp: <input type='number' id='offSetTemp' value='%.1f'></label><br>"
+"<button onclick='enviarLimites()'>Salvar</button>"
 "</div>"
 "<div class='graph'>"
 "<div class='row'>"
@@ -339,22 +339,28 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     return ERR_OK;
 }
 
+//Função para tocar os beeps do buzzer usando PWM com um intervalo de pausa como parâmetro e duracao
+void tocar_beeps(int qtd_beeps, int duracao_ms, int pausa_ms){
+    for (int i = 0; i < qtd_beeps; i++) {
+        pwm_set_gpio_level(BUZZER_PIN, 500);
+        pwm_set_enabled(buzzer_slice, true);
+        sleep_ms(duracao_ms);
+        pwm_set_enabled(buzzer_slice, false);
+        sleep_ms(pausa_ms);
+    }
+}
+
 //Função para checar os alertas, utilizando matriz de leds, led rgb e buzzer
 void checar_alertas(){
-    //Zona de tolerância (10% de margem)
     float margem_temp = (limite_temp_max - limite_temp_min) * 0.1f;
     float margem_umi  = (limite_umi_max  - limite_umi_min)  * 0.1f;
     float margem_pres = (limite_pres_max - limite_pres_min) * 0.1f;
 
-    //Estado de cada sensor (0 = normal, 1 = próximo, 2 = ultrapassou)
-    int estado_temp = 0;
-    int estado_umi  = 0;
-    int estado_pres = 0;
+    int estado_temp = 0, estado_umi = 0, estado_pres = 0;
 
-    //Determinar o estado de cada sensor
-    if(temperatura < limite_temp_min || temperatura > limite_temp_max)
+    if (temperatura < limite_temp_min || temperatura > limite_temp_max)
         estado_temp = 2;
-    else if(temperatura < limite_temp_min + margem_temp || temperatura > limite_temp_max - margem_temp)
+    else if (temperatura < limite_temp_min + margem_temp || temperatura > limite_temp_max - margem_temp)
         estado_temp = 1;
 
     if (umidade < limite_umi_min || umidade > limite_umi_max)
@@ -367,35 +373,33 @@ void checar_alertas(){
     else if (pressao < limite_pres_min + margem_pres || pressao > limite_pres_max - margem_pres)
         estado_pres = 1;
 
-    //Determinar o maior nível de alerta entre todos os sensores
     int nivel_alerta = estado_temp;
-    if(estado_umi  > nivel_alerta) nivel_alerta = estado_umi;
-    if(estado_pres > nivel_alerta) nivel_alerta = estado_pres;
+    if (estado_umi > nivel_alerta) nivel_alerta = estado_umi;
+    if (estado_pres > nivel_alerta) nivel_alerta = estado_pres;
 
-    //LED RGB e buzzer
-    switch(nivel_alerta){
-        case 0: //OK
+    switch (nivel_alerta) {
+        case 0: // OK
             gpio_put(LED_GREEN, 1);
             gpio_put(LED_RED, 0);
             gpio_put(LED_BLUE, 0);
             pwm_set_enabled(buzzer_slice, false);
-            set_one_led(0, 16, 0, 0); // Verde, ícone "OK"
+            set_one_led(0, 16, 0, 0);
             break;
-        case 1: //Aproximando
-            gpio_put(LED_GREEN, 0);
+
+        case 1: // Amarelo - 2 bipes curtos
+            gpio_put(LED_GREEN, 1);
             gpio_put(LED_RED, 1);
-            gpio_put(LED_BLUE, 1);  // Amarelo (vermelho+verde)
-            pwm_set_gpio_level(BUZZER_PIN, 300);  // Beep leve
-            pwm_set_enabled(buzzer_slice, true);
-            set_one_led(16, 16, 0, 1); // Amarelo, ícone atenção
+            gpio_put(LED_BLUE, 0);
+            tocar_beeps(2, 200, 300);  // 2 beeps curtos
+            set_one_led(16, 16, 0, 1);
             break;
-        case 2: //Estourou
+
+        case 2: // Vermelho - 4 bipes curtos
             gpio_put(LED_GREEN, 0);
             gpio_put(LED_RED, 1);
             gpio_put(LED_BLUE, 0);
-            pwm_set_gpio_level(BUZZER_PIN, 600);  // Beep forte
-            pwm_set_enabled(buzzer_slice, true);
-            set_one_led(32, 0, 0, 2); // Vermelho, ícone X
+            tocar_beeps(4, 150, 200);  // 4 beeps rápidos
+            set_one_led(32, 0, 0, 2);
             break;
     }
 }
@@ -403,7 +407,7 @@ void checar_alertas(){
 int main(){
     inicializar_componentes(); //Inicia os componentes
     iniciar_webserver();       // Inicia o webserver
-    
+
     uint8_t *ip = (uint8_t *)&(cyw43_state.netif[0].ip_addr.addr);
     char ip_str[24];
     snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
