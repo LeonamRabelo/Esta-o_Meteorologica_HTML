@@ -19,8 +19,8 @@
 #include "aht20.h"
 #include "bmp280.h"
 
-#define WIFI_SSID "Lion"   // Alterar para o SSID da rede
-#define WIFI_PASSWORD "12345678" // Alterar para a senha da rede
+#define WIFI_SSID "USER"   // Alterar para o SSID da rede
+#define WIFI_PASSWORD "PASSWORD" // Alterar para a senha da rede
 
 //Definição de pinagem
 #define I2C_PORT_SENSOR i2c0

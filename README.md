@@ -38,7 +38,7 @@ O painel web permite configuração de:
 - Temperatura mínima/máxima
 - Umidade mínima/máxima
 - Pressão mínima/máxima
-- Offset para calibração da temperatura
+- Offset para calibração da temperatura, umidade e pressão
 
 Exemplo de campos:
 ```html
