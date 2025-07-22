@@ -37,18 +37,18 @@
 #define LED_GREEN 11  // Pino do LED verde'
 #define IS_RGBW false // Maquina PIO para RGBW
 
-uint volatile numero = 0;            // Variável para inicializar o numero com 0 (WS2812B)
-float temperatura = 0, umidade = 0, pressao = 0;
-float limite_temp_min = 10.0, limite_temp_max = 40.0;
-float limite_umi_min = 30.0, limite_umi_max = 80.0;
-float limite_pres_min = 900.0, limite_pres_max = 1020.0;
-float offSet_temp = 0.0f;
+float temperatura = 0, umidade = 0, pressao = 0;            //Variáveis para armazenar os valores de temperatura, umidade e pressão
+float limite_temp_min = 10.0, limite_temp_max = 40.0;       //Variáveis para armazenar os limites de temperatura
+float limite_umi_min = 30.0, limite_umi_max = 80.0;         //Variáveis para armazenar os limites de umidade
+float limite_pres_min = 900.0, limite_pres_max = 1020.0;    //Variáveis para armazenar os limites de pressão
+float offSet_temp = 0.0f;                                   //Variável para armazenar o offset da temperatura
 
-uint buzzer_slice;
-ssd1306_t ssd;
-AHT20_Data dados_aht;
-struct bmp280_calib_param bmp_params;
+uint buzzer_slice;  //Variável para armazenar o slice do buzzer
+ssd1306_t ssd;  //Estrutura para armazenar os dados do display
+AHT20_Data dados_aht;   //Estrutura para armazenar os dados do sensor
+struct bmp280_calib_param bmp_params;   //Estrutura para armazenar os parâmetros do sensor
 
+//Definição do HTML
 const char HTML_TEMPLATE[] = 
 "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'/>"
 "<meta name='viewport' content='width=device-width, initial-scale=1.0'/>"
@@ -121,10 +121,6 @@ static err_t tcp_server_accept(void *arg, struct tcp_pcb *newpcb, err_t err);
 static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
 void set_one_led(uint8_t r, uint8_t g, uint8_t b, int numero);
 
-//////////////////////////////////////////BASE PRONTA//////////////////////////////////////////////////////////////////////
-// Display SSD1306
-ssd1306_t ssd;
-
 // Função para modularizar a inicialização do hardware
 void inicializar_componentes(){
     stdio_init_all();
@@ -135,10 +131,10 @@ void inicializar_componentes(){
     uint offset = pio_add_program(pio, &ws2812_program);
     ws2812_program_init(pio, sm, offset, WS2812_PIN, 800000, IS_RGBW);
 
+    //Configura os leds
     gpio_init(LED_RED); gpio_set_dir(LED_RED, GPIO_OUT);
     gpio_init(LED_BLUE); gpio_set_dir(LED_BLUE, GPIO_OUT);
     gpio_init(LED_GREEN); gpio_set_dir(LED_GREEN, GPIO_OUT);
-    gpio_init(BOTAO_A); gpio_set_dir(BOTAO_A, GPIO_IN); gpio_pull_up(BOTAO_A);
 
     //Configura o I2C na porta i2c1 para o display
     i2c_init(I2C_PORT_DISPLAY, 400 * 1000);
@@ -162,6 +158,7 @@ void inicializar_componentes(){
     aht20_reset(I2C_PORT_SENSOR);
     aht20_init(I2C_PORT_SENSOR);
 
+    //Configura o buzzer com PWM
     gpio_set_function(BUZZER_PIN, GPIO_FUNC_PWM);
     buzzer_slice = pwm_gpio_to_slice_num(BUZZER_PIN);
     pwm_set_clkdiv(buzzer_slice, 125.0f);
@@ -170,17 +167,17 @@ void inicializar_componentes(){
     pwm_set_enabled(buzzer_slice, false);
 }
 
-// WebServer: Início no main()
+//WebServer: Início no main()
 void iniciar_webserver(){
     if (cyw43_arch_init())
         return; // Inicia o Wi-Fi
     cyw43_arch_enable_sta_mode();
 
-    gpio_put(LED_BLUE, 1);
-    ssd1306_fill(&ssd, false);
+    gpio_put(LED_BLUE, 1);                                // Liga o LED azul para indicar que estamos conectando
+    ssd1306_fill(&ssd, false);                            // Limpa o display
     ssd1306_draw_string(&ssd, "CONECTANDO...", 15, 20);   // Desenha uma string
-    ssd1306_send_data(&ssd);
-    printf("Conectando ao Wi-Fi...\n");
+    ssd1306_send_data(&ssd);                              // Envia os dados
+    printf("Conectando ao Wi-Fi...\n");                    // Exibe uma mensagem no serial monitor
     while (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000)){ // Conecta ao Wi-Fi - loop
         printf("Falha ao conectar!\n");
         sleep_ms(3000);
@@ -188,8 +185,8 @@ void iniciar_webserver(){
     printf("Conectado! IP: %s\n", ipaddr_ntoa(&netif_default->ip_addr)); // Conectado, e exibe o IP da rede no serial monitor
     ssd1306_fill(&ssd, false);
     ssd1306_draw_string(&ssd, "Conexao feita", 10, 20);   // Desenha uma string
-    ssd1306_send_data(&ssd);
-    gpio_put(LED_BLUE, 0);
+    ssd1306_send_data(&ssd);                              // Envia os dados
+    gpio_put(LED_BLUE, 0);                                // Desliga o LED azul
     sleep_ms(1000);
     
     struct tcp_pcb *server = tcp_new();    // Cria o servidor
@@ -205,47 +202,48 @@ static err_t tcp_server_accept(void *arg, struct tcp_pcb *newpcb, err_t err){
 }
 
 // Requisição HTTP
-#define MAX_REQ_LEN 2048
-static char req_buffer[MAX_REQ_LEN];
-static int req_offset = 0;
+#define MAX_REQ_LEN 2048    // Tamanho maximo da requisição
+static char req_buffer[MAX_REQ_LEN];    // Buffer para armazenar a requisição
+static int req_offset = 0;              //Offset da requisição
 
+//Tratamento das requisições
 static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err){
-    if (!p){
-        tcp_close(tpcb);
+    if (!p){    // Se o buffer estiver vazio
+        tcp_close(tpcb);    // Fecha a conexao
         req_offset = 0;
         return ERR_OK;
     }
 
-    // Acumula a requisição
-    if (req_offset + p->len < MAX_REQ_LEN){
-        memcpy(req_buffer + req_offset, p->payload, p->len);
+    //Acumula a requisição
+    if(req_offset + p->len < MAX_REQ_LEN){     // Se o buffer nao estiver cheio
+        memcpy(req_buffer + req_offset, p->payload, p->len);    // Copia o payload
         req_offset += p->len;
         req_buffer[req_offset] = '\0';
-    } else {
+    }else{  // Se o buffer estiver cheio
         printf("Requisição muito grande!\n");
-        tcp_close(tpcb);
+        tcp_close(tpcb);    // Fecha a conexao
         pbuf_free(p);
         req_offset = 0;
         return ERR_MEM;
     }
 
-    // Verifica se chegou o corpo (\r\n\r\n)
+    //Verifica se chegou o corpo (\r\n\r\n)
     char *body = strstr(req_buffer, "\r\n\r\n");
-    if (!body){
+    if(!body){
         tcp_recved(tpcb, p->tot_len);
         pbuf_free(p);
-        return ERR_OK; // ainda não terminou
+        return ERR_OK; //ainda não terminou
     }
 
-    body += 4; // aponta pro início do corpo
-    printf(">>> BODY BRUTO:\n%s\n", body);
+    body += 4; //aponta pro início do corpo
+    //printf(">>> BODY BRUTO:\n%s\n", body);    // Exibe o corpo na serial monitor, para testes, tava retornando vazio
 
-    // Cabeçalhos
+    //Cabeçalhos
     const char *header_html = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n";
     const char *header_json = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
 
-    if (strncmp(req_buffer, "GET / ", 6) == 0){
-        char html_final[4096];
+    if (strncmp(req_buffer, "GET / ", 6) == 0){ // Se a requisição for para o index
+        char html_final[4096];  // Buffer para armazenar o HTML
         snprintf(html_final, sizeof(html_final), HTML_TEMPLATE,
             limite_temp_min, limite_temp_max,
             limite_umi_min, limite_umi_max,
@@ -255,7 +253,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         tcp_write(tpcb, header_html, strlen(header_html), TCP_WRITE_FLAG_COPY);
         tcp_write(tpcb, html_final, strlen(html_final), TCP_WRITE_FLAG_COPY);
     }
-
+    //Verifica se a requisição e para /data
     else if (strncmp(req_buffer, "GET /data", 9) == 0){
         char json[128];
         snprintf(json, sizeof(json),
@@ -265,18 +263,18 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
         tcp_write(tpcb, header_json, strlen(header_json), TCP_WRITE_FLAG_COPY);
         tcp_write(tpcb, json, strlen(json), TCP_WRITE_FLAG_COPY);
     }
-
-else if (strstr(req_buffer, "POST /set-limits") != NULL) {
+    //Verifica se a requisição e para /set-limits
+    else if(strstr(req_buffer, "POST /set-limits") != NULL){
     char *body = strstr(req_buffer, "\r\n\r\n");
-    if (body) {
+    if(body){
         int content_length = 0;
         char *cl_ptr = strstr(req_buffer, "Content-Length:");
-        if (cl_ptr) sscanf(cl_ptr, "Content-Length: %d", &content_length);
+        if(cl_ptr) sscanf(cl_ptr, "Content-Length: %d", &content_length);
 
         int header_len = (body + 4) - req_buffer;
         int total_expected_len = header_len + content_length;
 
-        if (req_offset < total_expected_len) {
+        if(req_offset < total_expected_len){
             tcp_recved(tpcb, p->tot_len);
             pbuf_free(p);
             return ERR_OK;
@@ -284,12 +282,12 @@ else if (strstr(req_buffer, "POST /set-limits") != NULL) {
 
         body += 4;
 
-        // Sanitiza vírgulas
-        for (char *ptr = body; *ptr; ptr++) {
+        //Sanitiza vírgulas, para evitar problemas com o JSON de envio, com uso de float
+        for(char *ptr = body; *ptr; ptr++){
             if (*ptr == ',') *ptr = '.';
         }
 
-        // Variáveis temporárias
+        //Variáveis temporárias
         float tMin = limite_temp_min;
         float tMax = limite_temp_max;
         float uMin = limite_umi_min;
@@ -298,9 +296,9 @@ else if (strstr(req_buffer, "POST /set-limits") != NULL) {
         float pMax = limite_pres_max;
         float offsetT = offSet_temp;
 
-        // Parse do corpo
+        //Parse do corpo, para extrair os limites e offset, e atualizar as variáveis globais
         char *token = strtok(body, "&");
-        while (token != NULL) {
+        while(token != NULL){
             sscanf(token, "tempMin=%f", &tMin);
             sscanf(token, "tempMax=%f", &tMax);
             sscanf(token, "umiMin=%f", &uMin);
@@ -311,7 +309,7 @@ else if (strstr(req_buffer, "POST /set-limits") != NULL) {
             token = strtok(NULL, "&");
         }
 
-        // Atualiza variáveis globais
+        //Atualiza variáveis globais
         limite_temp_min = tMin;
         limite_temp_max = tMax;
         limite_umi_min = uMin;
@@ -320,6 +318,7 @@ else if (strstr(req_buffer, "POST /set-limits") != NULL) {
         limite_pres_max = pMax;
         offSet_temp = offsetT;
 
+        //Exibe os novos limites na serial
         printf(">>> NOVOS LIMITES:\n");
         printf("Temp: %.1f - %.1f\n", tMin, tMax);
         printf("Umi:  %.1f - %.1f\n", uMin, uMax);
@@ -328,11 +327,11 @@ else if (strstr(req_buffer, "POST /set-limits") != NULL) {
 
         const char *ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nLimites atualizados.";
         tcp_write(tpcb, ok, strlen(ok), TCP_WRITE_FLAG_COPY);
-    } else {
+    }else{
         const char *not_found = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nRecurso não encontrado.";
         tcp_write(tpcb, not_found, strlen(not_found), TCP_WRITE_FLAG_COPY);
     }
-}
+    }
     tcp_recved(tpcb, p->tot_len);
     pbuf_free(p);
     tcp_close(tpcb);
@@ -340,44 +339,22 @@ else if (strstr(req_buffer, "POST /set-limits") != NULL) {
     return ERR_OK;
 }
 
-// Debounce do botão (evita leituras falsas)
-bool debounce_botao(uint gpio){
-    static uint32_t ultimo_tempo = 0;
-    uint32_t tempo_atual = to_ms_since_boot(get_absolute_time());
-    // Verifica se o botão foi pressionado e se passaram 200ms
-    if (gpio_get(gpio) == 0 && (tempo_atual - ultimo_tempo) > 200){ // 200ms de debounce
-        ultimo_tempo = tempo_atual;
-        return true;
-    }
-    return false;
-}
-
-#include "pico/bootrom.h"
-#define botaoB 6
-// Função de interrupção com Debouncing
-void gpio_irq_handler(uint gpio, uint32_t events){
-    uint32_t current_time = to_ms_since_boot(get_absolute_time()); // Variavel para armazenar o tempo atual
-    // Caso o botão A seja pressionado
-    if(gpio == 6 && debounce_botao(6)){
-    reset_usb_boot(0, 0);
-    }
-}
-
-// Função para checar os alertas, utilizando matriz de leds, led rgb e buzzer
-void checar_alertas() {
-    // Zona de tolerância (10% de margem)
+//Função para checar os alertas, utilizando matriz de leds, led rgb e buzzer
+void checar_alertas(){
+    //Zona de tolerância (10% de margem)
     float margem_temp = (limite_temp_max - limite_temp_min) * 0.1f;
     float margem_umi  = (limite_umi_max  - limite_umi_min)  * 0.1f;
     float margem_pres = (limite_pres_max - limite_pres_min) * 0.1f;
 
-    // Estado de cada sensor (0 = normal, 1 = próximo, 2 = ultrapassou)
+    //Estado de cada sensor (0 = normal, 1 = próximo, 2 = ultrapassou)
     int estado_temp = 0;
     int estado_umi  = 0;
     int estado_pres = 0;
 
-    if (temperatura < limite_temp_min || temperatura > limite_temp_max)
+    //Determinar o estado de cada sensor
+    if(temperatura < limite_temp_min || temperatura > limite_temp_max)
         estado_temp = 2;
-    else if (temperatura < limite_temp_min + margem_temp || temperatura > limite_temp_max - margem_temp)
+    else if(temperatura < limite_temp_min + margem_temp || temperatura > limite_temp_max - margem_temp)
         estado_temp = 1;
 
     if (umidade < limite_umi_min || umidade > limite_umi_max)
@@ -390,21 +367,21 @@ void checar_alertas() {
     else if (pressao < limite_pres_min + margem_pres || pressao > limite_pres_max - margem_pres)
         estado_pres = 1;
 
-    // Determinar o maior nível de alerta entre todos os sensores
+    //Determinar o maior nível de alerta entre todos os sensores
     int nivel_alerta = estado_temp;
-    if (estado_umi  > nivel_alerta) nivel_alerta = estado_umi;
-    if (estado_pres > nivel_alerta) nivel_alerta = estado_pres;
+    if(estado_umi  > nivel_alerta) nivel_alerta = estado_umi;
+    if(estado_pres > nivel_alerta) nivel_alerta = estado_pres;
 
-    // LED RGB e buzzer
-    switch (nivel_alerta) {
-        case 0: // OK
+    //LED RGB e buzzer
+    switch(nivel_alerta){
+        case 0: //OK
             gpio_put(LED_GREEN, 1);
             gpio_put(LED_RED, 0);
             gpio_put(LED_BLUE, 0);
             pwm_set_enabled(buzzer_slice, false);
             set_one_led(0, 16, 0, 0); // Verde, ícone "OK"
             break;
-        case 1: // Aproximando
+        case 1: //Aproximando
             gpio_put(LED_GREEN, 0);
             gpio_put(LED_RED, 1);
             gpio_put(LED_BLUE, 1);  // Amarelo (vermelho+verde)
@@ -412,7 +389,7 @@ void checar_alertas() {
             pwm_set_enabled(buzzer_slice, true);
             set_one_led(16, 16, 0, 1); // Amarelo, ícone atenção
             break;
-        case 2: // Estourou
+        case 2: //Estourou
             gpio_put(LED_GREEN, 0);
             gpio_put(LED_RED, 1);
             gpio_put(LED_BLUE, 0);
@@ -424,23 +401,13 @@ void checar_alertas() {
 }
 
 int main(){
-    inicializar_componentes(); // Inicia os componentes
-
-    // Para ser utilizado o modo BOOTSEL com botão B
-    gpio_init(6);
-    gpio_set_dir(6, GPIO_IN);
-    gpio_pull_up(6);
-    gpio_set_irq_enabled_with_callback(6, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
-   // Fim do trecho para modo BOOTSEL com botão B
-
+    inicializar_componentes(); //Inicia os componentes
     iniciar_webserver();       // Inicia o webserver
+    
     uint8_t *ip = (uint8_t *)&(cyw43_state.netif[0].ip_addr.addr);
     char ip_str[24];
     snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     printf("IP: %s\n", ip_str); // Exibe o IP no serial monitor
-
-    //Inicia a interrupção do botão A
-    gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
 
     //Estrutura para armazenar os dados do sensor
     AHT20_Data data;
@@ -458,7 +425,7 @@ int main(){
         float temperatura_bmp = bmp280_convert_temp(raw_temp_bmp, &bmp_params);
         pressao = bmp280_convert_pressure(raw_pressure, raw_temp_bmp, &bmp_params) / 100.0f;
         //Leitura do AHT20
-        if (aht20_read(I2C_PORT_SENSOR, &data)){
+        if(aht20_read(I2C_PORT_SENSOR, &data)){
             printf("Temperatura AHT: %.2f C\n", data.temperature);
             printf("Umidade: %.2f %%\n\n\n", data.humidity);
             umidade = data.humidity;
@@ -467,7 +434,7 @@ int main(){
             printf("Erro na leitura do AHT20!\n\n\n");
         }
 
-        //Para enviar para o html, utilizei a media da soma dos dos dois sensores e jogar no grafico
+        //Para enviar para o html, utilizei a media da soma dos dois sensores e jogar no grafico
         temperatura = (((temperatura_bmp / 100.0f) + data.temperature) / 2.0f) + offSet_temp;
         checar_alertas();
 
@@ -476,7 +443,7 @@ int main(){
         sprintf(str_umi, "%.1f%%", data.humidity);  // Converte o inteiro em string  
         sprintf(str_pres, "%.1fh", pressao);  // Converte o inteiro em string      
     
-        //  Atualiza o conteúdo do display com animações
+        //Atualiza o conteúdo do display com animações
         ssd1306_fill(&ssd, false);                           // Limpa o display
         ssd1306_rect(&ssd, 3, 3, 122, 60, true, false);       // Desenha um retângulo
         ssd1306_line(&ssd, 3, 25, 123, 25, true);            // Desenha uma linha
